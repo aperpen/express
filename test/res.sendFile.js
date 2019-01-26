@@ -1,5 +1,6 @@
 
 var after = require('after');
+var Buffer = require('safe-buffer').Buffer
 var express = require('../')
   , request = require('supertest')
   , assert = require('assert');
@@ -96,25 +97,29 @@ describe('res', function(){
     })
 
     it('should not error if the client aborts', function (done) {
-      var cb = after(1, done);
       var app = express();
+      var cb = after(2, done)
+      var error = null
 
       app.use(function (req, res) {
         setImmediate(function () {
           res.sendFile(path.resolve(fixtures, 'name.txt'));
           server.close(cb)
-        });
+          setTimeout(function () {
+            cb(error)
+          }, 10)
+        })
         test.abort();
       });
 
       app.use(function (err, req, res, next) {
-        err.code.should.be.empty()
-        cb();
+        error = err
+        next(err)
       });
 
       var server = app.listen()
       var test = request(server).get('/')
-      test.expect(200, cb);
+      test.end()
     })
 
     describe('with "cacheControl" option', function () {
@@ -151,7 +156,9 @@ describe('res', function(){
 
         request(app)
         .get('/')
-        .expect(200, 'tobi', done);
+        .expect(200)
+        .expect(shouldHaveBody(Buffer.from('tobi')))
+        .end(done)
       });
     });
 
@@ -544,7 +551,9 @@ describe('res', function(){
 
       request(app)
       .get('/')
-      .expect(200, 'tobi', done);
+      .expect(200)
+      .expect(shouldHaveBody(Buffer.from('tobi')))
+      .end(done)
     })
 
     it('should accept headers option', function(done){
@@ -628,25 +637,29 @@ describe('res', function(){
     });
 
     it('should not error if the client aborts', function (done) {
-      var cb = after(1, done);
       var app = express();
+      var cb = after(2, done)
+      var error = null
 
       app.use(function (req, res) {
         setImmediate(function () {
           res.sendfile(path.resolve(fixtures, 'name.txt'));
           server.close(cb)
+          setTimeout(function () {
+            cb(error)
+          }, 10)
         });
         test.abort();
       });
 
       app.use(function (err, req, res, next) {
-        err.code.should.be.empty()
-        cb();
+        error = err
+        next(err)
       });
 
       var server = app.listen()
       var test = request(server).get('/')
-      test.expect(200, cb);
+      test.end()
     })
 
     describe('with an absolute path', function(){
@@ -792,4 +805,14 @@ function createApp(path, options, fn) {
   });
 
   return app;
+}
+
+function shouldHaveBody (buf) {
+  return function (res) {
+    var body = !Buffer.isBuffer(res.body)
+      ? Buffer.from(res.text)
+      : res.body
+    assert.ok(body, 'response has body')
+    assert.strictEqual(body.toString('hex'), buf.toString('hex'))
+  }
 }
